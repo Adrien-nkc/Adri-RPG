@@ -37,7 +37,7 @@ const DialogueBox: React.FC<DialogueBoxProps> = ({ dialogue, onComplete }) => {
         setIsTyping(false);
         if (timerRef.current) clearInterval(timerRef.current);
       }
-    }, 30);
+    }, 20);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -75,7 +75,6 @@ const DialogueBox: React.FC<DialogueBoxProps> = ({ dialogue, onComplete }) => {
       onClick={handleNext}
     >
       <div className="flex items-start gap-6">
-        <span className="text-white font-bold text-2xl shrink-0 mt-1">*</span>
         <div className="flex flex-col flex-1">
           {dialogue.speaker && (
             <span className="text-zinc-500 font-bold mb-1 uppercase tracking-widest text-sm">

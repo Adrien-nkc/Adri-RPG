@@ -137,6 +137,37 @@ class AudioService {
     osc.start();
     osc.stop(this.audioCtx.currentTime + 0.12);
   }
+
+  playReloadSound() {
+    this.playSfx("/SoundEffects/Pistol_reload.mp3");
+  }
+
+  // Synthesize an 8-bit footstep sound (short noise burst)
+  playStepSound() {
+    if (!this.audioCtx) return;
+    const osc = this.audioCtx.createOscillator();
+    const gain = this.audioCtx.createGain();
+
+    // White noise approximation using high frequency random square wave or just a low thud
+    // For 8-bit style, a short square wave burst at low frequency works well as a "tap"
+    osc.type = "square";
+    osc.frequency.setValueAtTime(
+      100 + Math.random() * 20,
+      this.audioCtx.currentTime,
+    );
+    
+    gain.gain.setValueAtTime(0.1, this.audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      this.audioCtx.currentTime + 0.05,
+    );
+
+    osc.connect(gain);
+    gain.connect(this.audioCtx.destination);
+
+    osc.start();
+    osc.stop(this.audioCtx.currentTime + 0.05);
+  }
 }
 
 export const audioService = new AudioService();

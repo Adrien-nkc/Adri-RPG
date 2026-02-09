@@ -1,11 +1,6 @@
-import React, { useRef, useEffect } from "react";
-import { Player, GameObject, GameScene } from "../types";
+import React, { useRef, useEffect, useState } from "react";
+import { Player, GameObject, GameScene, PixelSprite, ShotLine, Projectile, VisualEffect } from "../types";
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TILE_SIZE } from "../constants";
-
-export interface ShotLine {
-  from: { x: number; y: number };
-  to: { x: number; y: number };
-}
 
 interface GameCanvasProps {
   player: Player;
@@ -14,10 +9,14 @@ interface GameCanvasProps {
   bgColor: string;
   width: number;
   height: number;
+  /** Optional full-room background image URL (drawn behind everything). */
+  bgImage?: string;
   equippedItem?: string;
   onCanvasClick?: (canvasX: number, canvasY: number) => void;
   shotLine?: ShotLine | null;
   targetsShot?: string[];
+  projectiles?: Projectile[];
+  effects?: VisualEffect[];
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -27,12 +26,39 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   bgColor,
   width,
   height,
+  bgImage,
   equippedItem,
   onCanvasClick,
   shotLine,
   targetsShot = [],
+  projectiles = [],
+  effects = [],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
+  const [bgImageLoaded, setBgImageLoaded] = useState(false);
+  useEffect(() => {
+    if (!bgImage) {
+      bgImageRef.current = null;
+      setBgImageLoaded(false);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      bgImageRef.current = img;
+      setBgImageLoaded(true);
+    };
+    img.onerror = () => {
+      bgImageRef.current = null;
+      setBgImageLoaded(false);
+    };
+    img.src = bgImage;
+    return () => {
+      img.src = "";
+      bgImageRef.current = null;
+      setBgImageLoaded(false);
+    };
+  }, [bgImage]);
 
   // Camera logic: center player, clamp to room bounds
   // Room size is passed as width/height props
@@ -63,6 +89,62 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   ) => {
     ctx.fillStyle = color;
     ctx.fillRect(Math.floor(x - camera.x), Math.floor(y - camera.y), w, h);
+  };
+
+  /** Draw a pixel-art sprite scaled to dest size (Undertale-style crisp pixels). */
+  const drawSprite = (
+    ctx: CanvasRenderingContext2D,
+    sprite: PixelSprite,
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number,
+  ) => {
+    const cw = destW / sprite.w;
+    const ch = destH / sprite.h;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    for (let py = 0; py < sprite.h; py++) {
+      for (let px = 0; px < sprite.w; px++) {
+        const color = sprite.pixels[py * sprite.w + px];
+        if (!color) continue;
+        ctx.fillStyle = color;
+        const x = destX + px * cw - camera.x;
+        const y = destY + py * ch - camera.y;
+        ctx.fillRect(
+          Math.floor(x),
+          Math.floor(y),
+          Math.ceil(cw) + 1,
+          Math.ceil(ch) + 1,
+        );
+      }
+    }
+    ctx.imageSmoothingEnabled = prevSmooth;
+  };
+
+  /** Draw a sprite tiled to fill the rect (e.g. wood planks). Each tile = sprite.w x sprite.h world units. */
+  const drawSpriteTiled = (
+    ctx: CanvasRenderingContext2D,
+    sprite: PixelSprite,
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number,
+  ) => {
+    const nx = Math.ceil(destW / sprite.w) + 1;
+    const ny = Math.ceil(destH / sprite.h) + 1;
+    for (let ty = 0; ty < ny; ty++) {
+      for (let tx = 0; tx < nx; tx++) {
+        drawSprite(
+          ctx,
+          sprite,
+          destX + tx * sprite.w,
+          destY + ty * sprite.h,
+          sprite.w,
+          sprite.h,
+        );
+      }
+    }
   };
 
   const drawDamian = (ctx: CanvasRenderingContext2D, p: Player) => {
@@ -134,61 +216,213 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      // Draw Grid / Floor
-      ctx.strokeStyle = "rgba(255,255,255,0.03)";
-      for (let i = 0; i < width; i += TILE_SIZE) {
-        const screenX = i - camera.x;
-        if (screenX < 0 || screenX > CANVAS_WIDTH) continue;
-        ctx.beginPath();
-        ctx.moveTo(screenX, 0);
-        ctx.lineTo(screenX, CANVAS_HEIGHT);
-        ctx.stroke();
-      }
-      for (let i = 0; i < height; i += TILE_SIZE) {
-        const screenY = i - camera.y;
-        if (screenY < 0 || screenY > CANVAS_HEIGHT) continue;
-        ctx.beginPath();
-        ctx.moveTo(0, screenY);
-        ctx.lineTo(CANVAS_WIDTH, screenY);
-        ctx.stroke();
+      // Full-room background image (walls, base art)
+      const img = bgImageRef.current;
+      if (img && bgImageLoaded) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, -camera.x, -camera.y, width, height);
       }
 
-      // Draw floor objects first (background), then all other objects on top
+      // Subtle grid (skip when bg image is used for less clutter)
+      if (!img || !bgImageLoaded) {
+        ctx.strokeStyle = "rgba(255,255,255,0.03)";
+        for (let i = 0; i < width; i += TILE_SIZE) {
+          const screenX = i - camera.x;
+          if (screenX < 0 || screenX > CANVAS_WIDTH) continue;
+          ctx.beginPath();
+          ctx.moveTo(screenX, 0);
+          ctx.lineTo(screenX, CANVAS_HEIGHT);
+          ctx.stroke();
+        }
+        for (let i = 0; i < height; i += TILE_SIZE) {
+          const screenY = i - camera.y;
+          if (screenY < 0 || screenY > CANVAS_HEIGHT) continue;
+          ctx.beginPath();
+          ctx.moveTo(0, screenY);
+          ctx.lineTo(CANVAS_WIDTH, screenY);
+          ctx.stroke();
+        }
+      }
+
+      // Draw floor objects first (background)
       objects
         .filter((obj) => obj.type === "floor")
         .forEach((obj) => {
-          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
-        });
-      objects
-        .filter((obj) => obj.type !== "floor")
-        .forEach((obj) => {
-          if (obj.id.includes("darius")) {
-            drawDarius(ctx, { ...obj, x: obj.x, y: obj.y });
-          } else if (obj.type === "save") {
-            drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
-            ctx.fillStyle = "white";
-            ctx.font = "24px Arial";
-            ctx.fillText("★", obj.x - camera.x + 8, obj.y - camera.y + 28);
-          } else if (obj.type === "pickup") {
-            drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
-            ctx.fillStyle = "#fff";
-            ctx.font = "10px Arial";
-            ctx.fillText("P", obj.x - camera.x + 6, obj.y - camera.y + 12);
-          } else if (obj.type === "trigger" && obj.triggerScene) {
-            drawDoorOrPortal(ctx, { ...obj, x: obj.x, y: obj.y });
-          } else if (targetsShot.includes(obj.id)) {
-            drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, "#444");
-            ctx.fillStyle = "#fff";
-            ctx.font = "12px Arial";
-            ctx.fillText(
-              "X",
-              obj.x - camera.x + obj.width / 2 - 4,
-              obj.y - camera.y + obj.height / 2 + 4,
-            );
+          if (obj.sprite) {
+            if (obj.spriteRepeat) {
+              drawSpriteTiled(
+                ctx,
+                obj.sprite,
+                obj.x,
+                obj.y,
+                obj.width,
+                obj.height,
+              );
+            } else {
+              drawSprite(ctx, obj.sprite, obj.x, obj.y, obj.width, obj.height);
+            }
           } else {
             drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
           }
         });
+
+      // Non-floor objects sorted by zIndex (lower = behind, e.g. bar back then tables then NPCs)
+      // Also filter out hidden objects
+      const nonFloor = objects
+        .filter((obj) => obj.type !== "floor" && obj.type !== "spawn_marker" && !obj.hidden)
+        .slice()
+        .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+      nonFloor.forEach((obj) => {
+        if (obj.id.includes("darius") && !obj.sprite) {
+          drawDarius(ctx, { ...obj, x: obj.x, y: obj.y });
+        } else if (obj.type === "save" && !obj.sprite) {
+          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
+          ctx.fillStyle = "white";
+          ctx.font = "24px Arial";
+          ctx.fillText("★", obj.x - camera.x + 8, obj.y - camera.y + 28);
+        } else if (obj.type === "pickup" && !obj.sprite) {
+          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
+          ctx.fillStyle = "#fff";
+          ctx.font = "10px Arial";
+          ctx.fillText("P", obj.x - camera.x + 6, obj.y - camera.y + 12);
+        } else if (obj.type === "gun" && !obj.sprite) {
+          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
+          ctx.fillStyle = "#fff";
+          ctx.font = "12px Arial";
+          ctx.fillText(
+            "🔫",
+            obj.x - camera.x + obj.width / 2 - 6,
+            obj.y - camera.y + obj.height / 2 + 4,
+          );
+        } else if (obj.type === "trigger" && obj.triggerScene) {
+          drawDoorOrPortal(ctx, { ...obj, x: obj.x, y: obj.y });
+        } else if (targetsShot.includes(obj.id)) {
+          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, "#444");
+          ctx.fillStyle = "#fff";
+          ctx.font = "12px Arial";
+          ctx.fillText(
+            "X",
+            obj.x - camera.x + obj.width / 2 - 4,
+            obj.y - camera.y + obj.height / 2 + 4,
+          );
+        } else if (obj.sprite) {
+          drawSprite(ctx, obj.sprite, obj.x, obj.y, obj.width, obj.height);
+        } else {
+          drawPixelRect(ctx, obj.x, obj.y, obj.width, obj.height, obj.color);
+        }
+
+        // Draw enemy health bars
+        if (
+          obj.health !== undefined &&
+          obj.maxHealth !== undefined &&
+          !obj.isDead
+        ) {
+          const healthPercent = obj.health / obj.maxHealth;
+          const barWidth = obj.width;
+          const barHeight = 4;
+          const barX = obj.x - camera.x;
+          const barY = obj.y - camera.y - 8;
+
+          // Background
+          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          ctx.fillRect(barX, barY, barWidth, barHeight);
+
+          // Health
+          ctx.fillStyle =
+            healthPercent > 0.5
+              ? "#2ecc71"
+              : healthPercent > 0.25
+                ? "#f39c12"
+                : "#e74c3c";
+          ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+
+          // Border
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(barX, barY, barWidth, barHeight);
+        }
+      });
+
+      // Draw projectiles
+      if (projectiles) {
+        projectiles.forEach((proj) => {
+          ctx.fillStyle = proj.fromPlayer ? "#f39c12" : "#e74c3c";
+          ctx.beginPath();
+          ctx.arc(proj.x - camera.x, proj.y - camera.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw trail
+          ctx.strokeStyle = proj.fromPlayer
+            ? "rgba(243, 156, 18, 0.5)"
+            : "rgba(231, 76, 60, 0.5)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(proj.x - camera.x, proj.y - camera.y);
+          ctx.lineTo(
+            proj.x - proj.vx * 0.05 - camera.x,
+            proj.y - proj.vy * 0.05 - camera.y,
+          );
+          ctx.stroke();
+        });
+      }
+
+      // Draw visual effects
+      if (effects) {
+        effects.forEach((effect) => {
+          const age = Date.now() - effect.createdAt;
+          const alpha = 1 - age / effect.lifetime;
+
+          if (effect.type === "muzzle_flash") {
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.fillRect(
+              effect.x - camera.x - 10,
+              effect.y - camera.y - 10,
+              20,
+              20,
+            );
+          } else if (effect.type === "impact") {
+            ctx.strokeStyle = `rgba(255, 0, 0, ${alpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(
+              effect.x - camera.x,
+              effect.y - camera.y,
+              8,
+              0,
+              Math.PI * 2,
+            );
+            ctx.stroke();
+          } else if (effect.type === "blood_splatter") {
+            const sx = effect.x - camera.x;
+            const sy = effect.y - camera.y;
+            const t = Math.max(0, Math.min(1, alpha));
+
+            // Main blot
+            ctx.fillStyle = `rgba(120, 0, 0, ${0.65 * t})`;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner darker core
+            ctx.fillStyle = `rgba(60, 0, 0, ${0.9 * t})`;
+            ctx.beginPath();
+            ctx.arc(sx + 2, sy + 1, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Random droplets
+            ctx.fillStyle = `rgba(150, 0, 0, ${0.55 * t})`;
+            for (let i = 0; i < 5; i++) {
+              const ox = (Math.random() - 0.5) * 26;
+              const oy = (Math.random() - 0.5) * 26;
+              const r = 2 + Math.random() * 3;
+              ctx.beginPath();
+              ctx.arc(sx + ox, sy + oy, r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        });
+      }
 
       // Shot line (dashed: spaces between)
       if (shotLine) {
@@ -212,7 +446,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [player, objects, bgColor, scene, shotLine, targetsShot]);
+  }, [
+    player,
+    objects,
+    bgColor,
+    bgImage,
+    bgImageLoaded,
+    width,
+    height,
+    scene,
+    shotLine,
+    targetsShot,
+    projectiles,
+    effects,
+  ]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

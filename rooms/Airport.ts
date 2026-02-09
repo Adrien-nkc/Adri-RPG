@@ -16,7 +16,7 @@ export const AirportRoom: RoomConfig = {
       color: "#74b9ff",
       type: "trigger",
       name: "To departure gate",
-      triggerScene: GameScene.AIRPORT_GATE
+      triggerScene: GameScene.AIRPORT_GATE,
     },
     {
       id: "plane_trigger",
@@ -27,7 +27,7 @@ export const AirportRoom: RoomConfig = {
       color: "#dfe6e9",
       type: "trigger",
       name: "Flight to Antarctica",
-      triggerScene: GameScene.PLANE
+      triggerScene: GameScene.PLANE,
     },
     {
       id: "worker_1",
@@ -39,9 +39,9 @@ export const AirportRoom: RoomConfig = {
       type: "npc",
       name: "Staff",
       dialogue: [
-      "Please ensure all biological waste is disposed of correctly.",
-      "The CEO doesn't like clutter.",
-    ]
+        "Please ensure all biological waste is disposed of correctly.",
+        "The CEO doesn't like clutter.",
+      ],
     },
     {
       id: "sign_gate",
@@ -52,9 +52,7 @@ export const AirportRoom: RoomConfig = {
       color: "#b2bec3",
       type: "prop",
       name: "Sign",
-      dialogue: [
-      "Departure gates →",
-    ]
+      dialogue: ["Departure gates →"],
     },
   ],
 };

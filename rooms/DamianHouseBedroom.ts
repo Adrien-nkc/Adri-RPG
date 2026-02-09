@@ -9,9 +9,7 @@ export const DamianHouseBedroomRoom: RoomConfig = {
   height: 428,
   onEnterDialogue: {
     speaker: "Damian",
-    lines: [
-      "Your room. The only place that feels like a box you chose.",
-    ],
+    lines: ["Your room. The only place that feels like a box you chose."],
   },
   objects: [
     {
@@ -23,9 +21,7 @@ export const DamianHouseBedroomRoom: RoomConfig = {
       color: "#2a2a35",
       type: "prop",
       name: "Bed",
-      dialogue: [
-      "You don't dream. You never have. Sleep is just a reset.",
-    ]
+      dialogue: ["You don't dream. You never have. Sleep is just a reset."],
     },
     {
       id: "desk",
@@ -36,9 +32,7 @@ export const DamianHouseBedroomRoom: RoomConfig = {
       color: "#3d3830",
       type: "prop",
       name: "Desk",
-      dialogue: [
-      "Old notes. Equations. Nothing that connects to anyone.",
-    ]
+      dialogue: ["Old notes. Equations. Nothing that connects to anyone."],
     },
     {
       id: "door_main",
@@ -49,7 +43,7 @@ export const DamianHouseBedroomRoom: RoomConfig = {
       color: "#1a1a1a",
       type: "trigger",
       name: "Living room",
-      triggerScene: GameScene.DAMIAN_HOUSE
+      triggerScene: GameScene.DAMIAN_HOUSE,
     },
   ],
 };

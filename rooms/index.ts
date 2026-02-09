@@ -10,8 +10,12 @@ import { DamianHouseKitchenRoom } from "./DamianHouseKitchen";
 import { EndingRoom } from "./Ending";
 import { PlaneRoom } from "./Plane";
 import { StartRoom } from "./Start";
-import { testdeleteafter } from "./TestDeleteAfter";
+import * as TestdeleteafterModule from "./Testdeleteafter";
 import { TutorialRoom, TUTORIAL_TARGET_IDS } from "./Tutorial";
+
+const TestdeleteafterRoom =
+  (TestdeleteafterModule as Record<string, RoomConfig>).TestdeleteafterRoom ??
+  (TestdeleteafterModule as Record<string, RoomConfig>).testdeleteafter;
 
 export { GameScene };
 
@@ -29,6 +33,6 @@ export const SCENE_CONFIGS: Record<GameScene, RoomConfig> = {
   [GameScene.ENDING]: EndingRoom,
   [GameScene.PLANE]: PlaneRoom,
   [GameScene.START]: StartRoom,
-  [GameScene.TESTDELETEAFTER]: testdeleteafter,
+  [GameScene.TESTDELETEAFTER]: TestdeleteafterRoom,
   [GameScene.TUTORIAL]: TutorialRoom,
 };

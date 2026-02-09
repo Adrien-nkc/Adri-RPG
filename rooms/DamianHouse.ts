@@ -6,6 +6,9 @@ export const DamianHouseRoom: RoomConfig = {
   spawnPoint: { x: 380, y: 420 },
   bgColor: "#2c2c2c",
   description: "Your house. Quiet. You're alone.",
+  bgImage: "/Textures/Floor.jpg",
+  width: 800,
+  height: 600,
   onEnterDialogue: {
     speaker: "Damian",
     lines: [
@@ -86,6 +89,17 @@ export const DamianHouseRoom: RoomConfig = {
       type: "trigger",
       name: "Front door",
       triggerScene: GameScene.AIRPORT
+    },
+    {
+      id: "obj_1770641062021",
+      x: 100,
+      y: 100,
+      width: 50,
+      height: 50,
+      color: "#636e72",
+      type: "spawn_marker",
+      name: "New object",
+      fromScene: "DAMIAN_HOUSE_BEDROOM"
     },
   ],
 };

@@ -29,6 +29,7 @@ export function usePistol(
   const shotLine = {
     from: { x: player.x + player.width / 2, y: player.y + player.height / 2 },
     to: { x: canvasX, y: canvasY },
+    createdAt: Date.now(),
   };
   audioService.playGunfireSound();
   return { shotLine, soundPlayed: true, targetHitId };

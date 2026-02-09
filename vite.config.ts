@@ -39,5 +39,27 @@ export default defineConfig({
         }
       },
     },
+    {
+      name: "serve-textures",
+      configureServer(server) {
+        server.middlewares.use("/Textures", (req, res, next) => {
+          const raw = (req.url ?? "/").replace(/^\//, "");
+          const decoded = decodeURIComponent(raw);
+          const file = path.join(process.cwd(), "Textures", path.normalize(decoded).replace(/^(\.\.(\/|\\))+/, ""));
+          if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+            next();
+            return;
+          }
+          res.setHeader("Cache-Control", "public, max-age=3600");
+          fs.createReadStream(file).pipe(res);
+        });
+      },
+      writeBundle() {
+        const textures = path.join(process.cwd(), "Textures");
+        if (fs.existsSync(textures)) {
+          copyDir(textures, path.join(process.cwd(), "dist", "Textures"));
+        }
+      },
+    },
   ],
 });

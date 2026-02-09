@@ -23,7 +23,7 @@ export const AirportGateRoom: RoomConfig = {
       color: "#00b894",
       type: "trigger",
       name: "Board flight to Brazil",
-      triggerScene: GameScene.BRAZIL_SAFEHOUSE
+      triggerScene: GameScene.BRAZIL_SAFEHOUSE,
     },
     {
       id: "seat_1",
@@ -34,9 +34,7 @@ export const AirportGateRoom: RoomConfig = {
       color: "#636e72",
       type: "prop",
       name: "Seat",
-      dialogue: [
-      "Plastic. You've been sitting for hours. Almost there.",
-    ]
+      dialogue: ["Plastic. You've been sitting for hours. Almost there."],
     },
     {
       id: "board_sign",
@@ -47,9 +45,7 @@ export const AirportGateRoom: RoomConfig = {
       color: "#b2bec3",
       type: "prop",
       name: "Departure board",
-      dialogue: [
-      "São Paulo. Gate 7. Final call.",
-    ]
+      dialogue: ["São Paulo. Gate 7. Final call."],
     },
   ],
 };

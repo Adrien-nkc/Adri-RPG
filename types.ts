@@ -102,10 +102,12 @@ export interface GameObject {
   dropItems?: string[]; // items to drop when enemy dies
   onDeathTrigger?: string; // object ID to trigger when enemy dies
   // AI stateful fields (for runtime only, not in static config)
-  aiState?: "idle" | "patrol" | "chase";
+  aiState?: "idle" | "patrol" | "chase" | "alert" | "follow";
   patrolIndex?: number;
   speed?: number;
   lastStateChange?: number;
+  /** Team/Alignment: NPCs and Player are usually 'player', guards are 'enemy' */
+  alignment?: "player" | "enemy";
   /** Runtime flag: set to true when this object has been activated by a death trigger */
   isTriggered?: boolean;
 }
@@ -163,6 +165,7 @@ export interface Projectile {
   range: number;
   distanceTraveled: number;
   fromPlayer: boolean;
+  alignment: "player" | "enemy";
   gunId?: string; // ID of the gun that fired this projectile
 }
 

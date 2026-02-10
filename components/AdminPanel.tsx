@@ -1025,14 +1025,42 @@ export default function AdminPanel() {
                       const patch: Partial<GameObject> = { type: newType };
                       // Set default enemy AI properties when changing to enemy type
                       if (newType === "enemy") {
+                        patch.isEnemy = true;
+                        patch.color = "#ff0000";
+                        patch.width = 30;
+                        patch.height = 50;
+                        patch.name = "Guard";
+
                         patch.health = selectedObject.health ?? 100;
                         patch.maxHealth = selectedObject.maxHealth ?? 100;
-                        patch.aiType = selectedObject.aiType ?? "stationary";
+                        patch.aiType = selectedObject.aiType ?? "patrol";
+                        patch.patrolPoints = selectedObject.patrolPoints ?? [
+                          { x: selectedObject.x, y: selectedObject.y },
+                          { x: selectedObject.x, y: selectedObject.y + 200 },
+                          { x: selectedObject.x - 200, y: selectedObject.y + 200 },
+                          { x: selectedObject.x - 200, y: selectedObject.y },
+                        ];
                         patch.speed = selectedObject.speed ?? 2;
                         patch.detectionRange = selectedObject.detectionRange ?? 250;
                         patch.attackRange = selectedObject.attackRange ?? 40;
                         patch.attackDamage = selectedObject.attackDamage ?? 10;
                         patch.collidable = true;
+                        patch.alignment = "enemy";
+                      } else if (newType === "npc") {
+                        patch.color = "#636e72";
+                        patch.width = 30;
+                        patch.height = 50;
+                        patch.name = "NPC";
+                        patch.alignment = "player";
+                        patch.isEnemy = false;
+                        patch.collidable = true;
+                        patch.health = 100;
+                        patch.maxHealth = 100;
+                      } else {
+                        // When changing FROM enemy/npc to something else
+                        if (selectedObject.isEnemy) {
+                          patch.isEnemy = false;
+                        }
                       }
                       updateObject(selectedObject.id, patch);
                     }}
@@ -1146,7 +1174,7 @@ export default function AdminPanel() {
                     }
                     title="If checked, object is invisible but still collides/interacts (e.g. invisible wall or secret door)"
                   />
-                  {selectedObject.type === "enemy" && (
+                  {(selectedObject.type === "enemy" || selectedObject.type === "npc") && (
                     <>
                       <label className="admin-form-label">Health</label>
                       <input
@@ -1166,18 +1194,14 @@ export default function AdminPanel() {
                         value={selectedObject.aiType ?? "stationary"}
                         onChange={(e) =>
                           updateObject(selectedObject.id, {
-                            aiType: e.target.value as
-                              | "stationary"
-                              | "patrol"
-                              | "chase"
-                              | "follow",
+                            aiType: e.target.value as any,
                           })
                         }
                       >
                         <option value="stationary">Stationary</option>
                         <option value="patrol">Patrol</option>
-                        <option value="chase">Chase Player</option>
-                        <option value="follow">Follow</option>
+                        <option value="chase">Chase Target</option>
+                        <option value="follow">Follow Target</option>
                       </select>
                       <label className="admin-form-label">Speed</label>
                       <input
@@ -1216,7 +1240,7 @@ export default function AdminPanel() {
                       <input
                         type="number"
                         className="admin-input"
-                        value={selectedObject.attackDamage ?? 10}
+                        value={selectedObject.attackDamage ?? 80}
                         onChange={(e) =>
                           updateObject(selectedObject.id, {
                             attackDamage: Number(e.target.value),

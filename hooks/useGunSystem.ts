@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   AmmoState,
   GameObject,
@@ -24,6 +24,9 @@ interface GunSystemState {
   // Visual effects
   effects: VisualEffect[];
 
+  // Visual shot lines (traces)
+  shotLines: { id: string; from: Vector2; to: Vector2; createdAt: number }[];
+
   // Last shot time (for fire rate)
   lastShotTime: number;
 }
@@ -35,8 +38,12 @@ export function useGunSystem() {
     ownedGuns: [],
     projectiles: [],
     effects: [],
+    shotLines: [],
     lastShotTime: 0,
   });
+
+  // Ref for projectiles to handle physics/collision outside of React state purity constraints
+  const projectilesRef = useRef<Projectile[]>([]);
 
   // Add a gun to inventory
   const addGun = useCallback((gunId: string) => {
@@ -57,7 +64,9 @@ export function useGunSystem() {
             isReloading: false,
           },
         },
-        equippedGun: prev.equippedGun || gunId, // Auto-equip if first gun
+        // Only auto-equip if we have NO gun equipped at all. 
+        // If we already have a gun, don't force switch.
+        equippedGun: prev.equippedGun || gunId,
       };
     });
   }, []);
@@ -116,6 +125,52 @@ export function useGunSystem() {
       return { ...prev, ammo: newAmmo };
     });
   }, []);
+  
+  // Add visual effect
+  const addEffect = useCallback(
+    (type: VisualEffect["type"], x: number, y: number, lifetime: number) => {
+      const effect: VisualEffect = {
+        id: `effect_${Date.now()}_${Math.random()}`,
+        type,
+        x,
+        y,
+        lifetime,
+        createdAt: Date.now(),
+      };
+
+      setState((prev) => ({
+        ...prev,
+        effects: [...prev.effects, effect],
+      }));
+
+      // Only set a timeout to remove the effect if it's NOT blood_splatter
+      if (type !== "blood_splatter") {
+        setTimeout(() => {
+          setState((prev) => ({
+            ...prev,
+            effects: prev.effects.filter((e) => e.id !== effect.id),
+          }));
+        }, lifetime);
+      }
+    },
+    [],
+  );
+
+  // Add a shot line trace
+  const addShotLine = useCallback((from: Vector2, to: Vector2, lifetime: number = 100) => {
+    const id = `shot_${Date.now()}_${Math.random()}`;
+    setState(prev => ({
+      ...prev,
+      shotLines: [...prev.shotLines, { id, from, to, createdAt: Date.now() }]
+    }));
+
+    setTimeout(() => {
+      setState(prev => ({
+        ...prev,
+        shotLines: prev.shotLines.filter(s => s.id !== id)
+      }));
+    }, lifetime);
+  }, []);
 
   // Check if can shoot
   const canShoot = useCallback(() => {
@@ -147,46 +202,43 @@ export function useGunSystem() {
     ): {
       hit: boolean;
       hitObjectId?: string;
-      shotLine: { from: Vector2; to: Vector2 } | null;
+      shotLine?: { from: Vector2; to: Vector2 };
     } => {
-      if (!canShoot()) return { hit: false, shotLine: null };
-      if (!state.equippedGun) return { hit: false, shotLine: null };
+      if (!canShoot()) return { hit: false };
+      if (!state.equippedGun) return { hit: false };
 
       const gun = ALL_GUNS[state.equippedGun];
-
-      // Play pistol sound effect
-      if (gun.id === "pistol") {
-        // You can change the file path to your actual pistol sound
-        import("../services/audioService").then(({ audioService }) => {
-          audioService.playSfx &&
-            audioService.playSfx("/SoundEffects/pistol.mp3");
-        });
-      }
-
-      // Consume ammo
+      
+      // Update ammo
       setState((prev) => {
-        const newAmmo = { ...prev.ammo };
-        const gunAmmo = newAmmo[prev.equippedGun!];
-
-        newAmmo[prev.equippedGun!] = {
-          ...gunAmmo,
-          current: gunAmmo.current - 1,
-        };
-
+        const ammo = prev.ammo[prev.equippedGun!];
         return {
           ...prev,
-          ammo: newAmmo,
           lastShotTime: Date.now(),
+          ammo: {
+            ...prev.ammo,
+            [prev.equippedGun!]: {
+              ...ammo,
+              current: ammo.current - 1,
+            },
+          },
         };
       });
 
-      // Add muzzle flash effect
-      addEffect("muzzle_flash", fromX, fromY, 100);
+      // Play sound
+      import("../services/audioService").then(({ audioService }) => {
+        if (gun.id === "pistol") {
+             audioService.playSfx("/SoundEffects/pistol.mp3");
+        } else {
+             audioService.playGunfireSound && audioService.playGunfireSound();
+        }
+      });
 
-      // Calculate shot direction with spread
-      const dx = targetX - fromX;
-      const dy = targetY - fromY;
-      const angle = Math.atan2(dy, dx);
+      // Muzzle flash
+      addEffect("muzzle_flash", fromX, fromY, 50);
+
+      // Calculate spread
+      const angle = Math.atan2(targetY - fromY, targetX - fromX);
       const spreadRad = ((gun.spread * Math.PI) / 180) * (Math.random() - 0.5);
       const finalAngle = angle + spreadRad;
 
@@ -198,7 +250,6 @@ export function useGunSystem() {
             x: fromX + Math.cos(finalAngle) * gun.range,
             y: fromY + Math.sin(finalAngle) * gun.range,
           },
-          createdAt: Date.now(),
         };
 
         // Check hits
@@ -206,65 +257,37 @@ export function useGunSystem() {
 
         if (hit.hit) {
           addEffect("impact", hit.x!, hit.y!, 200);
+          // If we hit something, shorten the shot line to the hit point
+          shotLine.to = { x: hit.x!, y: hit.y! };
         }
 
-        return { ...hit, shotLine };
+        addShotLine(shotLine.from, shotLine.to, 100);
+
+        return { hit: hit.hit, hitObjectId: hit.hitObjectId, shotLine };
       } else {
-        // Spawn projectile
-        const projectileId = `proj_${Date.now()}_${Math.random()}`;
-        setState((prev) => ({
-          ...prev,
-          projectiles: [
-            ...prev.projectiles,
-            {
-              id: projectileId,
-              x: fromX,
-              y: fromY,
-              vx: Math.cos(finalAngle) * gun.bulletSpeed,
-              vy: Math.sin(finalAngle) * gun.bulletSpeed,
-              damage: gun.damage,
-              range: gun.range,
-              distanceTraveled: 0,
-              fromPlayer: true,
-              gunId: gun.id, // Add gun ID to identify rockets
-            },
-          ],
-        }));
-
-        return { hit: false, shotLine: null };
+         // Projectile logic
+         const proj: Projectile = {
+            id: `proj_${Date.now()}_${Math.random()}`,
+            x: fromX,
+            y: fromY,
+            vx: Math.cos(finalAngle) * gun.bulletSpeed,
+            vy: Math.sin(finalAngle) * gun.bulletSpeed,
+            damage: gun.damage,
+            range: gun.range,
+            distanceTraveled: 0,
+            fromPlayer: true,
+            alignment: "player",
+            gunId: gun.id,
+         };
+         
+         projectilesRef.current.push(proj);
+         // Sync state for rendering
+         setState(prev => ({ ...prev, projectiles: projectilesRef.current }));
+         
+         return { hit: false };
       }
     },
-    [canShoot, state.equippedGun],
-  );
-
-  // Add visual effect
-  const addEffect = useCallback(
-    (type: VisualEffect["type"], x: number, y: number, lifetime: number) => {
-      const effect: VisualEffect = {
-        id: `effect_${Date.now()}_${Math.random()}`,
-        type,
-        x,
-        y,
-        lifetime,
-        createdAt: Date.now(),
-      };
-
-      setState((prev) => ({
-        ...prev,
-        effects: [...prev.effects, effect],
-      }));
-
-      // Only set a timeout to remove the effect if it's NOT blood_splatter
-      if (type !== "blood_splatter") {
-        setTimeout(() => {
-          setState((prev) => ({
-            ...prev,
-            effects: prev.effects.filter((e) => e.id !== effect.id),
-          }));
-        }, lifetime);
-      }
-    },
-    [],
+    [canShoot, state.equippedGun, addEffect, addShotLine]
   );
 
   const spawnBloodSplatter = useCallback(
@@ -282,68 +305,127 @@ export function useGunSystem() {
 
   // Update projectiles (call this in game loop)
   const updateProjectiles = useCallback(
-    (deltaTime: number, objects: GameObject[]) => {
-      setState((prev) => {
+    (
+      deltaTime: number,
+      objects: GameObject[],
+      player?: { x: number; y: number; width: number; height: number; health?: number; maxHealth?: number },
+      onPlayerHit?: (damage: number) => void,
+      onEnemyHit?: (objId: string, damage: number) => void
+    ) => {
+        // Use Ref for calculation to avoid React state purity issues (double execution)
+        const currentProjectiles = projectilesRef.current;
         const updatedProjectiles: Projectile[] = [];
-
-        for (const proj of prev.projectiles) {
+        
+        for (const proj of currentProjectiles) {
           // Move projectile
-          const newX = proj.x + proj.vx * (deltaTime / 1000);
-          const newY = proj.y + proj.vy * (deltaTime / 1000);
-          const distance = Math.sqrt(
-            Math.pow(newX - proj.x, 2) + Math.pow(newY - proj.y, 2),
-          );
-          const newDistanceTraveled = proj.distanceTraveled + distance;
+          proj.x += proj.vx * (deltaTime / 1000);
+          proj.y += proj.vy * (deltaTime / 1000);
+          proj.distanceTraveled +=
+            Math.hypot(proj.vx, proj.vy) * (deltaTime / 1000);
 
-          // Check if exceeded range
-          if (newDistanceTraveled > proj.range) {
-            continue; // Remove
-          }
-
-          // Check collision with objects
           let hitSomething = false;
-          for (const obj of objects) {
-            if (obj.isDead) continue;
 
-            if (
-              newX >= obj.x &&
-              newX <= obj.x + obj.width &&
-              newY >= obj.y &&
-              newY <= obj.y + obj.height
-            ) {
-              // Hit!
-              if (obj.health !== undefined) {
-                // Regular projectile damage
-                addEffect("impact", newX, newY, 200);
+          // Collision with environment or other targets based on alignment
+          if (proj.alignment === "enemy") {
+            // Enemy projectiles hit player or friendly NPCs
+            if (player && (player.health ?? 1) > 0) {
+              const dx = proj.x - (player.x + player.width / 2);
+              const dy = proj.y - (player.y + player.height / 2);
+              const dist = Math.hypot(dx, dy);
+              if (dist < 25) {
+                if (onPlayerHit) onPlayerHit(proj.damage);
+                hitSomething = true;
               }
-              hitSomething = true;
-              break;
+            }
+            
+            // NPCs with 'player' alignment
+            for (const obj of objects) {
+              if (obj.alignment === "player" && obj.type === "npc" && !obj.isDead) {
+                const dx = proj.x - (obj.x + obj.width / 2);
+                const dy = proj.y - (obj.y + obj.height / 2);
+                const dist = Math.hypot(dx, dy);
+                if (dist < 25) {
+                  hitSomething = true;
+                  if (onEnemyHit) onEnemyHit(obj.id, proj.damage);
+                }
+              }
+            }
+          } else {
+            // Player/NPC projectiles hit enemies
+            for (const obj of objects) {
+              if (obj.alignment === "enemy" && !obj.isDead) {
+                const dx = proj.x - (obj.x + obj.width / 2);
+                const dy = proj.y - (obj.y + obj.height / 2);
+                const dist = Math.hypot(dx, dy);
+                if (dist < 25) {
+                  hitSomething = true;
+                  if (onEnemyHit) onEnemyHit(obj.id, proj.damage);
+                }
+              }
             }
           }
 
-          if (hitSomething) continue; // Remove
+          // Wall collision
+          if (!hitSomething) {
+            for (const obj of objects) {
+              if (obj.type !== "floor" && obj.collidable && !obj.hidden && obj.alignment === undefined) {
+                 if (proj.x >= obj.x && proj.x <= obj.x + obj.width && 
+                     proj.y >= obj.y && proj.y <= obj.y + obj.height) {
+                     hitSomething = true;
+                 }
+              }
+            }
+          }
 
-          // Keep projectile
-          updatedProjectiles.push({
-            ...proj,
-            x: newX,
-            y: newY,
-            distanceTraveled: newDistanceTraveled,
-          });
+          if (!hitSomething && proj.distanceTraveled < proj.range) {
+            updatedProjectiles.push(proj);
+          } else {
+            addEffect("impact", proj.x, proj.y, 200);
+          }
         }
 
-        return { ...prev, projectiles: updatedProjectiles };
-      });
+        // Update Ref
+        projectilesRef.current = updatedProjectiles;
+        
+        // Update State for rendering
+        setState((prev) => ({
+          ...prev,
+          projectiles: updatedProjectiles,
+        }));
     },
-    [],
+    [addEffect],
   );
 
-  return {
+  const addEnemyProjectile = useCallback((x: number, y: number, targetX: number, targetY: number, damage: number, alignment: "player" | "enemy" = "enemy") => {
+      const speed = 2500;
+      const angle = Math.atan2(targetY - y, targetX - x);
+      const proj: Projectile = {
+        id: `eproj_${Date.now()}_${Math.random()}`,
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        damage,
+        range: 1000,
+        distanceTraveled: 0,
+        fromPlayer: alignment === "player",
+        alignment,
+      };
+      
+      projectilesRef.current.push(proj);
+      setState((prev) => ({
+        ...prev,
+        projectiles: projectilesRef.current,
+      }));
+  }, []);
+
+  return useMemo(() => ({
     equippedGun: state.equippedGun,
     ammo: state.ammo,
     ownedGuns: state.ownedGuns,
     projectiles: state.projectiles,
     effects: state.effects,
+    shotLines: state.shotLines, // Added to return
     addGun,
     equipGun,
     reload,
@@ -351,7 +433,9 @@ export function useGunSystem() {
     shoot,
     spawnBloodSplatter,
     updateProjectiles,
-  };
+    addEnemyProjectile,
+    addShotLine, // Added to return
+  }), [state, addGun, equipGun, reload, canShoot, shoot, spawnBloodSplatter, updateProjectiles, addEnemyProjectile, addShotLine]);
 }
 
 // Helper: Check hitscan hit

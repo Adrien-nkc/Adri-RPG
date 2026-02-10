@@ -10,7 +10,7 @@ import { DamianHouseKitchenRoom } from "./DamianHouseKitchen";
 import { EndingRoom } from "./Ending";
 import { PlaneRoom } from "./Plane";
 import { StartRoom } from "./Start";
-import * as TestdeleteafterModule from "./Testdeleteafter";
+import * as TestdeleteafterModule from "./TestDeleteAfter";
 import { TutorialRoom, TUTORIAL_TARGET_IDS } from "./Tutorial";
 
 const TestdeleteafterRoom =

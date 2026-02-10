@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import GameCanvas from "./components/GameCanvas";
-import type { ShotLine } from "./types";
 import DialogueBox from "./components/DialogueBox";
 import AdminPanel from "./components/AdminPanel";
 import {
@@ -12,13 +11,16 @@ import {
 } from "./types";
 import { SCENE_CONFIGS } from "./rooms";
 
+import { ALL_GUNS } from "./items/guns";
 import { DEFAULT_INVENTORY, getItem } from "./items";
 // import { usePistol } from "./items/pistol";
 import { audioService } from "./services/audioService";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "./constants";
 import { useGunSystem } from "./hooks/useGunSystem";
 import HUD from "./components/HUD";
-import { ALL_GUNS } from "./items/guns";
+
+import { EnemySystem } from "./systems/EnemySystem";
+import GameOver from "./components/GameOver";
 
 function isAdminMode() {
   const params = new URLSearchParams(window.location.search);
@@ -38,6 +40,7 @@ const App: React.FC = () => {
       clearInterval(interval);
     };
   }, []);
+  if (showAdmin) return <AdminPanel />;
   if (showAdmin) return <AdminPanel />;
   return <GameView />;
 };
@@ -70,8 +73,11 @@ const GameView: React.FC = () => {
       speed: 4,
       frame: 0,
       facing: "down",
+      alignment: "player",
     };
   });
+  const playerRef = useRef(player);
+  useEffect(() => { playerRef.current = player; }, [player]);
 
   const [dialogue, setDialogue] = useState<DialogueState>({
     speaker: "",
@@ -79,6 +85,8 @@ const GameView: React.FC = () => {
     currentIndex: 0,
     active: false,
   });
+  const dialogueRef = useRef(dialogue);
+  useEffect(() => { dialogueRef.current = dialogue; }, [dialogue]);
 
   const [inventory, setInventory] =
     useState<InventoryItem[]>(DEFAULT_INVENTORY);
@@ -90,14 +98,28 @@ const GameView: React.FC = () => {
   const [onEnterDialogueShownFor, setOnEnterDialogueShownFor] = useState<
     Set<GameScene>
   >(new Set());
-  const [shotLine, setShotLine] = useState<ShotLine | null>(null);
-  // Gun system integration
   const gunSystem = useGunSystem();
+  // Stabilize gun system methods for the loop
+  const updateProjectilesRef = useRef(gunSystem.updateProjectiles);
+  const addEnemyProjectileRef = useRef(gunSystem.addEnemyProjectile);
+  useEffect(() => {
+    updateProjectilesRef.current = gunSystem.updateProjectiles;
+    addEnemyProjectileRef.current = gunSystem.addEnemyProjectile;
+  }, [gunSystem.updateProjectiles, gunSystem.addEnemyProjectile]);
+  const addShotLineRef = useRef(gunSystem.addShotLine);
+  useEffect(() => {
+    addShotLineRef.current = gunSystem.addShotLine;
+  }, [gunSystem.addShotLine]);
+
   // Player health state
-  const [playerHealth] = useState(100);
+  const [playerHealth, setPlayerHealth] = useState(100);
+  const playerHealthRef = useRef(playerHealth);
+  useEffect(() => { playerHealthRef.current = playerHealth; }, [playerHealth]);
   // Scene config state for gun/enemy health updates
   const baseConfig = SCENE_CONFIGS[scene];
   const [sceneConfig, setSceneConfig] = useState(() => baseConfig);
+  const sceneConfigRef = useRef(sceneConfig);
+  useEffect(() => { sceneConfigRef.current = sceneConfig; }, [sceneConfig]);
 
   // Only reset sceneConfig from static config on scene change
   useEffect(() => {
@@ -133,6 +155,8 @@ const GameView: React.FC = () => {
   const lastBgmRef = useRef<string | null>(null);
   // Track previous scene for proper spawn reset
   const prevSceneRef = useRef(scene);
+  const hasStartedRef = useRef(hasStarted);
+  useEffect(() => { hasStartedRef.current = hasStarted; }, [hasStarted]);
 
   const INTRO_LINES = [
     "In a world where progress is a ritual of ownership...",
@@ -150,8 +174,6 @@ const GameView: React.FC = () => {
     // Only reset when scene actually changed
     const sceneChanged = prevSceneRef.current !== scene;
     if (sceneChanged) {
-      // Clear shot lines on scene change
-      setShotLine(null);
       prevSceneRef.current = scene;
     }
   }, [scene, hasStarted, tutorialPistolPickedUp, tutorialTargetsShot]);
@@ -299,7 +321,20 @@ const GameView: React.FC = () => {
     if (actualItemId === "pistol") {
       setTutorialPistolPickedUp(true);
       gunSystem.addGun("pistol");
-      gunSystem.equipGun && gunSystem.equipGun("pistol"); // Auto-equip pistol after pickup
+      
+      // Auto-equip the pistol if we just picked it up
+      setInventory(prev => {
+           // If we already have it, find its index
+           const existingIdx = prev.findIndex(i => i.id === "pistol");
+           if (existingIdx !== -1) {
+               setEquippedIndex(existingIdx);
+               return prev;
+           }
+           // Otherwise add it
+           const item = getItem("pistol")!;
+           setEquippedIndex(prev.length);
+           return [...prev, item];
+      });
     } else if (actualItemId === "shotgun") {
       gunSystem.addGun("shotgun");
       gunSystem.equipGun && gunSystem.equipGun("shotgun");
@@ -366,10 +401,39 @@ const GameView: React.FC = () => {
     }
   }, [player, sceneConfig, dialogue.active, hasStarted, startTransition]);
 
+
+
+  // Sync inventory selection with gun system
+  useEffect(() => {
+    const item = inventory[equippedIndex];
+    // If it's a gun, tell gunSystem to equip it
+    if (item && ALL_GUNS[item.id]) {
+      gunSystem.equipGun(item.id);
+    } else {
+      // Not a gun (e.g. hammer), so unequal any gun
+      gunSystem.equipGun(null);
+    }
+  }, [equippedIndex, inventory, gunSystem.equipGun]);
+
   // Input Handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (playerHealthRef.current <= 0) return;
       const k = e.key.toLowerCase();
+      
+      // Reload
+      if (k === "r") {
+        gunSystem.reload();
+      }
+      
+      // Weapon Switching (1-9)
+      if (e.key >= "1" && e.key <= "9") {
+        const idx = parseInt(e.key) - 1;
+        if (idx < inventory.length) {
+          setEquippedIndex(idx);
+        }
+      }
+
       keys.current[k] = true;
       if (k === "e") checkInteractions();
     };
@@ -383,7 +447,7 @@ const GameView: React.FC = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [checkInteractions, dialogue.active]);
+  }, [checkInteractions]);
 
   // Game Loop for Movement
   useEffect(() => {
@@ -392,10 +456,11 @@ const GameView: React.FC = () => {
     }
     const move = () => {
       if (
-        !hasStarted ||
-        dialogue.active ||
+        !hasStartedRef.current ||
+        dialogueRef.current.active ||
         scene === GameScene.START ||
-        scene === GameScene.ENDING
+        scene === GameScene.ENDING ||
+        playerHealthRef.current <= 0
       )
         return;
 
@@ -424,14 +489,14 @@ const GameView: React.FC = () => {
         }
 
         // Room boundary collision (dynamic per room)
-        const roomWidth = sceneConfig.width ?? CANVAS_WIDTH;
-        const roomHeight = sceneConfig.height ?? CANVAS_HEIGHT;
+        const roomWidth = sceneConfigRef.current.width ?? CANVAS_WIDTH;
+        const roomHeight = sceneConfigRef.current.height ?? CANVAS_HEIGHT;
 
         newX = clamp(newX, 0, roomWidth - prev.width);
         newY = clamp(newY, 0, roomHeight - prev.height);
 
         // --- Floor-based collision (Undertale-style: walkable = inside a floor object; edges = walls) ---
-        const floorObjects = sceneConfig.objects.filter(
+        const floorObjects = sceneConfigRef.current.objects.filter(
           (o) => o.type === "floor",
         );
         if (floorObjects.length > 0) {
@@ -450,7 +515,7 @@ const GameView: React.FC = () => {
         }
 
         // Collidable object collision detection (exclude floor - floor defines walkable area, never blocks)
-        const collidableObjects = sceneConfig.objects.filter(
+        const collidableObjects = sceneConfigRef.current.objects.filter(
           (obj) => obj.type !== "floor" && obj.collidable && !obj.hidden,
         );
         for (const obj of collidableObjects) {
@@ -484,7 +549,7 @@ const GameView: React.FC = () => {
         }
 
         // Automatic doorway transition (walk through without pressing E)
-        const doorways = sceneConfig.objects.filter(
+        const doorways = sceneConfigRef.current.objects.filter(
           (obj) => obj.type === "doorway" && obj.triggerScene && !obj.hidden,
         );
         for (const doorway of doorways) {
@@ -513,124 +578,80 @@ const GameView: React.FC = () => {
       });
 
       // --- ENEMY AI UPDATE ---
-      setSceneConfig((prev) => {
-        const updatedObjects = prev.objects.map((obj) => {
-          if (!obj.isEnemy || obj.isDead) return obj;
-          let {
-            x,
-            y,
-            aiType,
-            patrolPoints,
-            patrolIndex = 0,
-            aiState = "idle",
-            speed = 2,
-            lastStateChange = 0,
-          } = obj;
-          const now = Date.now();
-          const playerCenter = {
-            x: player.x + player.width / 2,
-            y: player.y + player.height / 2,
-          };
-          const enemyCenter = {
-            x: x + (obj.width || 30) / 2,
-            y: y + (obj.height || 50) / 2,
-          };
-          const distToPlayer = Math.hypot(
-            playerCenter.x - enemyCenter.x,
-            playerCenter.y - enemyCenter.y,
-          );
-          let newState = aiState;
-          let newX = x;
-          let newY = y;
-          let newPatrolIndex = patrolIndex;
-          let newLastStateChange = lastStateChange;
+      // Run enemy AI entirely outside setState to avoid React batching issues.
+      // Read latest objects from ref, compute updates, fire side effects, then set state.
+      const currentObjects = sceneConfigRef.current.objects;
+      const updatedObjects = EnemySystem.update(
+        16, // deltaTime
+        currentObjects,
+        playerRef.current,
+        (shooter, targetX, targetY, damage) => {
+          // All side effects fire at top level — no setState nesting issues
+          const ex = shooter.x + shooter.width / 2;
+          const ey = shooter.y + shooter.height / 2;
+          const shootAlignment = shooter.alignment || (shooter.isEnemy ? "enemy" : "player");
+          
+          addEnemyProjectileRef.current(ex, ey, targetX, targetY, damage || 25, shootAlignment as "player" | "enemy");
 
-          // Simple state transitions
-          if (aiType === "chase" || aiType === "follow") {
-            if (distToPlayer < 300) {
-              newState = "chase";
-            } else {
-              newState = "idle";
-            }
-          } else if (aiType === "patrol") {
-            if (distToPlayer < 250) {
-              newState = "chase";
-            } else {
-              newState = "patrol";
-            }
-          } else {
-            newState = "idle";
-          }
+          audioService.playSfx("/SoundEffects/pistol.mp3");
+        }
+      );
+      setSceneConfig((prev) => ({ ...prev, objects: updatedObjects }));
+      // IMPORTANT: Update ref immediately so next frame sees updated objects (e.g. lastFireTime)
+      // otherwise EnemySystem might trigger double shots if React render lags behind critical 16ms loop
+      sceneConfigRef.current = { ...sceneConfigRef.current, objects: updatedObjects };
 
-          // State behavior
-          if (newState === "chase") {
-            // Move toward player
-            const dx = playerCenter.x - enemyCenter.x;
-            const dy = playerCenter.y - enemyCenter.y;
-            const len = Math.hypot(dx, dy) || 1;
-            const moveX = (dx / len) * speed;
-            const moveY = (dy / len) * speed;
-            newX += moveX;
-            newY += moveY;
-          } else if (
-            newState === "patrol" &&
-            Array.isArray(patrolPoints) &&
-            patrolPoints.length > 0
-          ) {
-            // Move toward next patrol point
-            const target = patrolPoints[patrolIndex % patrolPoints.length];
-            const dx = target.x - enemyCenter.x;
-            const dy = target.y - enemyCenter.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < 8) {
-              newPatrolIndex = (patrolIndex + 1) % patrolPoints.length;
-              newLastStateChange = now;
-            } else {
-              const moveX = (dx / (dist || 1)) * speed;
-              const moveY = (dy / (dist || 1)) * speed;
-              newX += moveX;
-              newY += moveY;
-            }
-          }
-          // Clamp to room
-          const roomWidth = prev.width ?? CANVAS_WIDTH;
-          const roomHeight = prev.height ?? CANVAS_HEIGHT;
-          newX = clamp(newX, 0, roomWidth - (obj.width || 30));
-          newY = clamp(newY, 0, roomHeight - (obj.height || 50));
-
-          return {
-            ...obj,
-            x: newX,
-            y: newY,
-            aiState: newState,
-            patrolIndex: newPatrolIndex,
-            lastStateChange: newLastStateChange,
-          };
-        });
-        return { ...prev, objects: updatedObjects };
-      });
+      // --- PROJECTILE UPDATE ---
+      updateProjectilesRef.current(
+        16, 
+        sceneConfigRef.current.objects, 
+        { ...playerRef.current, health: playerHealthRef.current, maxHealth: 100 }, 
+        (damage: number) => {
+          setPlayerHealth((hp) => Math.max(0, hp - damage));
+          setHitFlash(true);
+          setTimeout(() => setHitFlash(false), 100);
+        },
+        (objId: string, damage: number) => {
+          // Handle enemy/NPC damage
+          setSceneConfig((prev) => ({
+            ...prev,
+            objects: prev.objects.map((obj) => {
+              if (obj.id === objId && obj.health !== undefined) {
+                const newHealth = Math.max(0, obj.health - damage);
+                const diedNow = newHealth <= 0 && !obj.isDead;
+                if (diedNow) {
+                  // Gore burst on death
+                  const hx = obj.x + obj.width / 2;
+                  const hy = obj.y + obj.height / 2;
+                  gunSystem.spawnBloodSplatter(hx, hy, 10, 26);
+                  audioService.playSfx("/SoundEffects/Blood.ogg");
+                }
+                return { 
+                  ...obj, 
+                  health: newHealth, 
+                  isDead: newHealth <= 0,
+                  color: newHealth <= 0 ? (obj.type === "enemy" ? "#3a0000" : obj.color) : obj.color 
+                };
+              }
+              return obj;
+            })
+          }));
+        }
+      );
     };
     const interval = setInterval(move, 1000 / 60);
     return () => clearInterval(interval);
   }, [
-    dialogue.active,
     scene,
-    hasStarted,
-    sceneConfig.objects,
-    startTransition,
-    player,
+    startTransition
   ]);
 
-  const handleStartGame = () => {
-    audioService.resume();
-    setHasStarted(true);
-    setScene(GameScene.TUTORIAL);
-  };
-
+  const [hitFlash, setHitFlash] = useState(false);
+  
   // Handle shooting with gun system
   const handleCanvasClick = useCallback(
     (canvasX: number, canvasY: number) => {
-      if (!gunSystem.equippedGun) return;
+      if (!gunSystem.equippedGun || playerHealthRef.current <= 0) return;
 
       // Room size is passed as width/height props
       const roomWidth = sceneConfig.width ?? CANVAS_WIDTH;
@@ -662,6 +683,7 @@ const GameView: React.FC = () => {
         worldY,
         sceneConfig.objects,
       );
+
       if (result.hit && result.hitObjectId) {
         const hitObj = sceneConfig.objects.find(
           (o) => o.id === result.hitObjectId,
@@ -673,9 +695,9 @@ const GameView: React.FC = () => {
           gunSystem.spawnBloodSplatter(hx, hy, 10, 26);
         }
         // Damage enemy
-        setSceneConfig((prev: any) => {
+        setSceneConfig((prev) => {
           let triggeredObjectId: string | null = null;
-          const updatedObjects = prev.objects.map((obj: any) => {
+          const updatedObjects = prev.objects.map((obj) => {
             if (obj.id === result.hitObjectId && obj.health !== undefined) {
               const gun = ALL_GUNS[gunSystem.equippedGun!];
               const newHealth = obj.health - gun.damage;
@@ -685,6 +707,7 @@ const GameView: React.FC = () => {
                 const hx = obj.x + obj.width / 2;
                 const hy = obj.y + obj.height / 2;
                 gunSystem.spawnBloodSplatter(hx, hy, 10, 26);
+                audioService.playSfx("/SoundEffects/Blood.ogg");
                 // Track triggered object on death
                 if (obj.onDeathTrigger) {
                   triggeredObjectId = obj.onDeathTrigger;
@@ -703,7 +726,7 @@ const GameView: React.FC = () => {
           if (triggeredObjectId) {
             return {
               ...prev,
-              objects: updatedObjects.map((obj: any) => {
+              objects: updatedObjects.map((obj) => {
                 if (obj.id === triggeredObjectId) {
                   // Reveal the object (remove hidden flag, ensure it's visible)
                   return { ...obj, hidden: false, isTriggered: true };
@@ -715,61 +738,17 @@ const GameView: React.FC = () => {
           return { ...prev, objects: updatedObjects };
         });
       }
-      // Show shot line briefly
-      if (result.shotLine) {
-        setShotLine({ ...result.shotLine, createdAt: Date.now() });
-        setTimeout(() => setShotLine(null), 100);
-      }
     },
-    [gunSystem, player, sceneConfig.objects],
+    [gunSystem, player, sceneConfig, CANVAS_WIDTH, CANVAS_HEIGHT]
   );
 
-  // Weapon switching (1-5 keys) and reload
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Inventory switching (1-9 keys)
-      if (e.key >= "1" && e.key <= "9") {
-        const index = parseInt(e.key) - 1;
-        if (inventory[index]) {
-          setEquippedIndex(index);
-          const item = inventory[index];
-          // If the item is a gun, equip it in the gun system too
-          if (ALL_GUNS[item.id]) {
-            gunSystem.equipGun(item.id);
-          } else {
-            // If it's not a gun (like hammer), unequip current gun
-            gunSystem.equipGun(null);
-          }
-        }
-      }
-      // Reload
-      if (e.key === "r" || e.key === "R") {
-        gunSystem.reload();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [inventory, gunSystem]);
-
-  useEffect(() => {
-    const item = inventory[equippedIndex];
-    if (item) {
-      if (ALL_GUNS[item.id]) {
-        gunSystem.equipGun(item.id);
-      } else {
-        gunSystem.equipGun(null);
-      }
-    }
-  }, [equippedIndex, inventory]);
-
-  // Update projectiles in game loop
-  useEffect(() => {
-    if (!hasStarted) return;
-    const interval = setInterval(() => {
-      gunSystem.updateProjectiles(16, sceneConfig.objects); // 16ms = ~60fps
-    }, 16);
-    return () => clearInterval(interval);
-  }, [hasStarted, sceneConfig.objects, gunSystem]);
+  const handleStartGame = () => {
+    import("./services/audioService").then(({ audioService }) => {
+        audioService.resume();
+    });
+    setHasStarted(true);
+    setScene(GameScene.TUTORIAL);
+  };
 
   return (
     <div className="app-container">
@@ -781,6 +760,7 @@ const GameView: React.FC = () => {
           ammo={gunSystem.ammo}
         />
 
+        {/* Game Area */}
         <GameCanvas
           player={{ ...player, health: playerHealth, maxHealth: 100 }}
           objects={sceneConfig.objects}
@@ -791,10 +771,19 @@ const GameView: React.FC = () => {
           height={sceneConfig.height ?? CANVAS_HEIGHT}
           equippedItem={gunSystem.equippedGun || undefined}
           onCanvasClick={handleCanvasClick}
-          shotLine={shotLine}
+          shotLines={gunSystem.shotLines}
           projectiles={gunSystem.projectiles}
           effects={gunSystem.effects}
+          hitFlash={hitFlash}
         />
+
+        {playerHealth <= 0 && (
+          <GameOver
+            onRestart={() => {
+              window.location.reload();
+            }}
+          />
+        )}
 
         {!hasStarted && (
           <div
@@ -909,7 +898,7 @@ const GameView: React.FC = () => {
             <div className="text-xs text-white/60 mb-2">
               Room Debug Switcher
             </div>
-            {Object.entries(SCENE_CONFIGS).map(([sceneKey, config]) => (
+            {Object.entries(SCENE_CONFIGS).map(([sceneKey]) => (
               <button
                 key={sceneKey}
                 className={`w-full px-2 py-1 rounded text-xs font-bold mb-1 border transition-colors ${

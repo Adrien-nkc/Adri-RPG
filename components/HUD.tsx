@@ -43,12 +43,12 @@ export default function HUD({
         >
           <div
             style={{
-              width: `${((player.health || 100) / (player.maxHealth || 100)) * 100}%`,
+              width: `${((player.health ?? 100) / (player.maxHealth ?? 100)) * 100}%`,
               height: "100%",
               background:
-                (player.health || 100) > 50
+                (player.health ?? 100) > 50
                   ? "#2ecc71"
-                  : (player.health || 100) > 25
+                  : (player.health ?? 100) > 25
                     ? "#f39c12"
                     : "#e74c3c",
               transition: "width 0.3s",
@@ -68,7 +68,7 @@ export default function HUD({
               fontWeight: "bold",
             }}
           >
-            {player.health || 100} / {player.maxHealth || 100}
+            {player.health ?? 100} / {player.maxHealth ?? 100}
           </div>
         </div>
       </div>

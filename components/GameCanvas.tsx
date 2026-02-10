@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Player, GameObject, GameScene, PixelSprite, ShotLine, Projectile, VisualEffect } from "../types";
+import { Player, GameObject, GameScene, PixelSprite, Vector2, Projectile, VisualEffect } from "../types";
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TILE_SIZE } from "../constants";
 
 interface GameCanvasProps {
@@ -13,10 +13,11 @@ interface GameCanvasProps {
   bgImage?: string;
   equippedItem?: string;
   onCanvasClick?: (canvasX: number, canvasY: number) => void;
-  shotLine?: ShotLine | null;
+  shotLines?: { from: Vector2; to: Vector2; createdAt: number }[] | null;
   targetsShot?: string[];
   projectiles?: Projectile[];
   effects?: VisualEffect[];
+  hitFlash?: boolean;
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -29,10 +30,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   bgImage,
   equippedItem,
   onCanvasClick,
-  shotLine,
+  shotLines,
   targetsShot = [],
   projectiles = [],
   effects = [],
+  hitFlash = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
@@ -354,14 +356,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
           // Draw trail
           ctx.strokeStyle = proj.fromPlayer
-            ? "rgba(243, 156, 18, 0.5)"
-            : "rgba(231, 76, 60, 0.5)";
-          ctx.lineWidth = 2;
+            ? "rgba(255, 200, 0, 0.8)" // Bright yellow/gold for player
+            : "rgba(255, 50, 50, 0.9)"; // Bright red for enemy
+          ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(proj.x - camera.x, proj.y - camera.y);
           ctx.lineTo(
-            proj.x - proj.vx * 0.05 - camera.x,
-            proj.y - proj.vy * 0.05 - camera.y,
+            proj.x - proj.vx * 0.12 - camera.x,
+            proj.y - proj.vy * 0.12 - camera.y,
           );
           ctx.stroke();
         });
@@ -424,22 +426,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         });
       }
 
-      // Shot line (dashed: spaces between)
-      if (shotLine) {
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 8]);
-        ctx.beginPath();
-        ctx.moveTo(shotLine.from.x - camera.x, shotLine.from.y - camera.y);
-        ctx.lineTo(shotLine.to.x - camera.x, shotLine.to.y - camera.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
+      // Shot lines (dashed: spaces between)
+      if (shotLines) {
+        shotLines.forEach(line => {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath();
+          ctx.moveTo(line.from.x - camera.x, line.from.y - camera.y);
+          ctx.lineTo(line.to.x - camera.x, line.to.y - camera.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        });
       }
-
-      // Draw Player
+// Draw Player
       if (scene !== GameScene.START && scene !== GameScene.ENDING) {
         drawDamian(ctx, player);
       }
+
+      // Hit Flash Overlay
+      if (hitFlash) {
+        ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      }
+
+
 
       animId = requestAnimationFrame(render);
     };
@@ -455,10 +466,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     width,
     height,
     scene,
-    shotLine,
     targetsShot,
     projectiles,
     effects,
+    shotLines,
   ]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

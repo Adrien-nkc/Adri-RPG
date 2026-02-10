@@ -4,7 +4,7 @@ import { GameScene } from "../types";
 export const TestdeleteafterRoom: RoomConfig = {
   bgMusic: "/OST/! PHONK BRAZIL 2.ogg",
   spawnPoint: { x: 100, y: 400 },
-  bgColor: "#1a1a1a",
+  bgColor: "#000000",
   description: "Combat test arena",
   width: 1200,
   height: 800,
@@ -15,7 +15,7 @@ export const TestdeleteafterRoom: RoomConfig = {
       y: 0,
       width: 1200,
       height: 800,
-      color: "#2d3436",
+      color: "#000000",
       type: "floor"
     },
     {
@@ -105,7 +105,6 @@ export const TestdeleteafterRoom: RoomConfig = {
       speed: 2,
       detectionRange: 250,
       attackRange: 40,
-      attackDamage: 10,
       patrolPoints: [
         { x: 600, y: 100 },
         { x: 600, y: 300 },
@@ -176,14 +175,14 @@ export const TestdeleteafterRoom: RoomConfig = {
       triggerScene: GameScene.DAMIAN_HOUSE
     },
     {
-      id: "obj_1770637779481",
-      x: 100,
-      y: 100,
-      width: 25,
+      id: "obj_1770711438964",
+      x: 816,
+      y: 542,
+      width: 30,
       height: 50,
-      color: "#636e72",
+      color: "#ff0000",
       type: "enemy",
-      name: "New object",
+      name: "Guard",
       collidable: true,
       isEnemy: true,
       health: 100,
@@ -192,21 +191,48 @@ export const TestdeleteafterRoom: RoomConfig = {
       speed: 2,
       detectionRange: 250,
       attackRange: 40,
+      patrolPoints: [
+        { x: 178, y: 322 },
+        { x: 178, y: 522 },
+        { x: -22, y: 522 },
+        { x: -22, y: 322 },
+      ]
+    },
+    {
+      id: "obj_1770716401763",
+      x: 100,
+      y: 100,
+      width: 30,
+      height: 50,
+      color: "#ff0000",
+      type: "enemy",
+      name: "Guard",
+      collidable: true,
+      isEnemy: true,
+      health: 100,
+      maxHealth: 100,
+      aiType: "follow",
+      speed: 2,
+      detectionRange: 250,
+      attackRange: 40,
       attackDamage: 10,
-      sprite: {
-      w: 8,
-      h: 8,
-      pixels: [
-        "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
-        "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
-        "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500",
-        "#ff9500", "#ff9500", "#ffffff", "#ff9500", "#ff9500", "#ffffff", "#ff9500", "#ff9500",
-        "#ff9500", "#ff9500", "#ffffff", "#ff9500", "#ff9500", "#ffffff", "#ff9500", "#ff9500",
-        "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500",
-        "#ff9500", "#ff9500", "#ffffff", "#ffffff", "#ffffff", "#ffffff", "#ff9500", "#ff9500",
-        "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500", "#ff9500",
-      ],
-    }
+      patrolPoints: [
+        { x: 100, y: 100 },
+        { x: 100, y: 300 },
+        { x: -100, y: 300 },
+        { x: -100, y: 100 },
+      ]
+    },
+    {
+      id: "obj_1770719462547",
+      x: 168,
+      y: 274,
+      width: 30,
+      height: 50,
+      color: "#636e72",
+      type: "npc",
+      name: "NPC",
+      collidable: true
     },
   ],
 };

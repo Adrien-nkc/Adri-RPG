@@ -83,8 +83,8 @@ export class EnemySystem {
           }
         }
         
-        // Fallback: If no enemy target and not stationary, follow player
-        if (!targetPos && aiType !== "stationary" && alignment === "player") {
+        // Fallback: If no enemy target OR target is out of detection range, and not stationary, follow player
+        if ((!targetPos || targetDist > detectionRange) && aiType !== "stationary" && alignment === "player") {
            const fRange = obj.followRange ?? 1000;
            const distToPlayer = Math.hypot(
              playerCenter.x - enemyCenter.x,

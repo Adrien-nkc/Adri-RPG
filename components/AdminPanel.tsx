@@ -145,6 +145,20 @@ export default function AdminPanel() {
   const [spriteEditorOpen, setSpriteEditorOpen] = useState(false);
   const [editingSprite, setEditingSprite] = useState<PixelSprite | null>(null);
   const [spritePaintColor, setSpritePaintColor] = useState("#ffffff");
+  const [spriteIsDrawing, setSpriteIsDrawing] = useState(false);
+  const [spriteIsErasing, setSpriteIsErasing] = useState(false);
+  const [activeTool, setActiveTool] = useState<"pen" | "bucket">("pen");
+
+  // Global mouseup to stop drawing
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setSpriteIsDrawing(false);
+      setSpriteIsErasing(false);
+    };
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, []);
+  
   const roomRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef(1);
   const mapZoomRef = useRef(1);
@@ -1568,44 +1582,91 @@ export default function AdminPanel() {
                         >
                           Grid size
                         </label>
-                        <select
-                          className="admin-input"
-                          style={{ width: 90 }}
-                          value={
-                            [8, 16, 32, 64].includes(editingSprite.w) &&
-                            editingSprite.w === editingSprite.h
-                              ? `${editingSprite.w}x${editingSprite.h}`
-                              : "custom"
-                          }
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "custom") return;
-                            const [w, h] = v.split("x").map(Number);
-                            setEditingSprite(createEmptySprite(w, h));
+                          <select
+                            className="admin-input"
+                            style={{ width: 90 }}
+                            value={
+                              [8, 16, 32, 64].includes(editingSprite.w) &&
+                              editingSprite.w === editingSprite.h
+                                ? `${editingSprite.w}x${editingSprite.h}`
+                                : editingSprite.w === selectedObject.width && editingSprite.h === selectedObject.height
+                                ? "match"
+                                : "custom"
+                            }
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === "custom") return;
+                              if (v === "match") {
+                                setEditingSprite(createEmptySprite(selectedObject.width, selectedObject.height));
+                                return;
+                              }
+                              const [w, h] = v.split("x").map(Number);
+                              setEditingSprite(createEmptySprite(w, h));
+                            }}
+                          >
+                            <option value="match">Match Object ({selectedObject.width}x{selectedObject.height})</option>
+                            <option value="8x8">8×8</option>
+                            <option value="16x16">16×16</option>
+                            <option value="32x32">32×32</option>
+                            <option value="64x64">64×64</option>
+                            {(editingSprite.w !== editingSprite.h ||
+                              ![8, 16, 32, 64].includes(editingSprite.w)) && 
+                              (editingSprite.w !== selectedObject.width || editingSprite.h !== selectedObject.height) && (
+                              <option value="custom">
+                                {editingSprite.w}×{editingSprite.h}
+                              </option>
+                            )}
+                          </select>
+                      </div>
+                      <div>
+                        <label
+                          style={{
+                            fontSize: 11,
+                            display: "block",
+                            marginBottom: 4,
                           }}
                         >
-                          <option value="8x8">8×8</option>
-                          <option value="16x16">16×16</option>
-                          <option value="32x32">32×32</option>
-                          <option value="64x64">64×64</option>
-                          {(editingSprite.w !== editingSprite.h ||
-                            ![8, 16, 32, 64].includes(editingSprite.w)) && (
-                            <option value="custom">
-                              {editingSprite.w}×{editingSprite.h}
-                            </option>
-                          )}
-                        </select>
+                          Tool
+                        </label>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            type="button"
+                            className="admin-btn"
+                            style={{
+                              background: activeTool === "pen" ? "var(--admin-accent)" : "#333",
+                              color: "#fff",
+                              padding: "4px 8px",
+                            }}
+                            onClick={() => setActiveTool("pen")}
+                            title="Pen (P)"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-btn"
+                            style={{
+                              background: activeTool === "bucket" ? "var(--admin-accent)" : "#333",
+                              color: "#fff",
+                              padding: "4px 8px",
+                            }}
+                            onClick={() => setActiveTool("bucket")}
+                            title="Bucket (B)"
+                          >
+                            🪣
+                          </button>
+                        </div>
                       </div>
                       <button
                         type="button"
                         className="admin-btn"
                         onClick={() =>
                           setEditingSprite(
-                            createEmptySprite(editingSprite.w, editingSprite.h),
+                            createEmptySprite(selectedObject.width, selectedObject.height),
                           )
                         }
                       >
-                        Clear
+                        Reset to Object Size
                       </button>
                     </div>
                     <div
@@ -1631,23 +1692,79 @@ export default function AdminPanel() {
                             border: "1px solid #333",
                             cursor: "pointer",
                           }}
-                          onClick={() => {
-                            const next = [...editingSprite.pixels];
-                            next[i] = spritePaintColor;
-                            setEditingSprite({
-                              ...editingSprite,
-                              pixels: next,
-                            });
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent text selection
+                            
+                            // FLOOD FILL LOGIC
+                            if (activeTool === "bucket") {
+                                const targetColor = editingSprite.pixels[i];
+                                const fillColor = e.button === 2 ? "" : spritePaintColor; // Right click = erase fill
+                                
+                                if (targetColor === fillColor) return; // Nothing to do
+
+                                const w = editingSprite.w;
+                                const h = editingSprite.h;
+                                const newPixels = [...editingSprite.pixels];
+                                const queue = [i];
+                                const visited = new Set([i]);
+                                
+                                while (queue.length > 0) {
+                                    const idx = queue.shift()!;
+                                    newPixels[idx] = fillColor;
+                                    
+                                    const x = idx % w;
+                                    const y = Math.floor(idx / w);
+                                    
+                                    // Check neighbors (up, down, left, right)
+                                    const neighbors = [
+                                        { nx: x, ny: y - 1 }, // Up
+                                        { nx: x, ny: y + 1 }, // Down
+                                        { nx: x - 1, ny: y }, // Left
+                                        { nx: x + 1, ny: y }  // Right
+                                    ];
+
+                                    for (const output of neighbors) {
+                                        const { nx, ny } = output;
+                                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                                            const nIdx = ny * w + nx;
+                                            if (!visited.has(nIdx) && newPixels[nIdx] === targetColor) {
+                                                visited.add(nIdx);
+                                                queue.push(nIdx);
+                                            }
+                                        }
+                                    }
+                                }
+                                setEditingSprite({ ...editingSprite, pixels: newPixels });
+                                return;
+                            }
+
+                            // PEN LOGIC
+                            if (e.button === 0) {
+                              setSpriteIsDrawing(true);
+                              const next = [...editingSprite.pixels];
+                              next[i] = spritePaintColor;
+                              setEditingSprite({ ...editingSprite, pixels: next });
+                            } else if (e.button === 2) {
+                              setSpriteIsErasing(true);
+                              const next = [...editingSprite.pixels];
+                              next[i] = "";
+                              setEditingSprite({ ...editingSprite, pixels: next });
+                            }
                           }}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            const next = [...editingSprite.pixels];
-                            next[i] = "";
-                            setEditingSprite({
-                              ...editingSprite,
-                              pixels: next,
-                            });
+                          onMouseEnter={() => {
+                            if (activeTool === "bucket") return; // No drag for bucket
+
+                            if (spriteIsDrawing) {
+                              const next = [...editingSprite.pixels];
+                              next[i] = spritePaintColor;
+                              setEditingSprite({ ...editingSprite, pixels: next });
+                            } else if (spriteIsErasing) {
+                              const next = [...editingSprite.pixels];
+                              next[i] = "";
+                              setEditingSprite({ ...editingSprite, pixels: next });
+                            }
                           }}
+                          onContextMenu={(e) => e.preventDefault()}
                         />
                       ))}
                     </div>
@@ -1990,6 +2107,25 @@ export default function AdminPanel() {
                       onMouseDown={(e) => handleCanvasMouseDown(e, obj.id)}
                       title={obj.name || obj.id}
                     >
+                      {/* Sprite Preview */}
+                      {obj.sprite && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: `repeat(${obj.sprite.w}, 1fr)`,
+                            width: "100%",
+                            height: "100%",
+                          }}
+                        >
+                          {obj.sprite.pixels.map((col, i) => (
+                            <div
+                              key={i}
+                              style={{ backgroundColor: col || "transparent" }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
                       {/* Special rendering for spawn markers */}
                       {obj.type === "spawn_marker" && (
                         <div

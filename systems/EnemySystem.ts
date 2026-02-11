@@ -46,6 +46,8 @@ export class EnemySystem {
       let targetPos: Vector2 | null = null;
       let targetDist = Infinity;
 
+      let isFriendlyFollow = false;
+
       if (alignment === "enemy") {
         // Enemies target player or friendly NPCs
         const distToPlayer = Math.hypot(
@@ -80,14 +82,34 @@ export class EnemySystem {
             }
           }
         }
+        
+        // Fallback: If no enemy target and not stationary, follow player
+        if (!targetPos && aiType !== "stationary" && alignment === "player") {
+           const fRange = obj.followRange ?? 1000;
+           const distToPlayer = Math.hypot(
+             playerCenter.x - enemyCenter.x,
+             playerCenter.y - enemyCenter.y
+           );
+           
+           if (distToPlayer <= fRange) {
+             targetPos = playerCenter;
+             targetDist = distToPlayer;
+             isFriendlyFollow = true;
+           }
+        }
       }
 
       // --- STATE TRANSITIONS ---
       let targetState = aiState;
 
       // 1. Detection Check
-      if (targetPos && targetDist <= detectionRange) {
-        if (aiType === "stationary") {
+      // Use followRange for friendly following, detectionRange for combat
+      const effectiveRange = isFriendlyFollow ? (obj.followRange ?? 1000) : detectionRange;
+      
+      if (targetPos && targetDist <= effectiveRange) {
+        if (isFriendlyFollow) {
+           targetState = "follow";
+        } else if (aiType === "stationary") {
           targetState = "alert";
         } else if (aiType === "follow") {
           targetState = "follow";
@@ -109,8 +131,8 @@ export class EnemySystem {
       let newPatrolIndex = patrolIndex;
       
       // Shooting Logic
-      // Shoot if we have a target AND are in an aggressive/alert state
-      const canShoot = targetPos && (targetState === "chase" || targetState === "alert" || targetState === "follow") && targetDist <= detectionRange;
+      // Shoot if we have a target AND are in an aggressive/alert state AND not friendly following
+      const canShoot = !isFriendlyFollow && targetPos && (targetState === "chase" || targetState === "alert" || targetState === "follow") && targetDist <= detectionRange;
       
       const lastFireTime = (obj as any).lastFireTime || 0;
       const fireRateMs = 1500;

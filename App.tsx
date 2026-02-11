@@ -207,34 +207,37 @@ const GameView: React.FC = () => {
         if (t >= 1) {
           const nextConfig = SCENE_CONFIGS[transitionTarget];
           const currentBgm = lastBgmRef.current;
-          const setSceneAndPlayer = () => {
-            setScene(transitionTarget);
-            // Set player spawn immediately after scene change
-            setTimeout(() => {
-              // Find specific spawn point from previous scene, or use default
-              let spawnX = nextConfig.spawnPoint.x;
-              let spawnY = nextConfig.spawnPoint.y;
-
-              // Look for spawn marker that matches the scene we generate coming FROM
-              // We are transitioning to 'transitionTarget', coming from 'scene'
-              const spawnMarker = nextConfig.objects.find(
-                (o) => o.type === "spawn_marker" && o.fromScene === scene
-              );
-
-              if (spawnMarker) {
-                spawnX = spawnMarker.x;
-                spawnY = spawnMarker.y;
-              }
-
-              setPlayer((p) => ({
-                ...p,
-                x: spawnX,
-                y: spawnY,
-              }));
-            }, 0);
-            setTransitionPhase("in");
-            setTransitionTarget(null);
-          };
+            const setSceneAndPlayer = () => {
+              // Clear previous room's effects
+              gunSystem.clearEffects();
+              
+              setScene(transitionTarget);
+              // Set player spawn immediately after scene change
+              setTimeout(() => {
+                // Find specific spawn point from previous scene, or use default
+                let spawnX = nextConfig.spawnPoint.x;
+                let spawnY = nextConfig.spawnPoint.y;
+  
+                // Look for spawn marker that matches the scene we generate coming FROM
+                // We are transitioning to 'transitionTarget', coming from 'scene'
+                const spawnMarker = nextConfig.objects.find(
+                  (o) => o.type === "spawn_marker" && o.fromScene === scene
+                );
+  
+                if (spawnMarker) {
+                  spawnX = spawnMarker.x;
+                  spawnY = spawnMarker.y;
+                }
+  
+                setPlayer((p) => ({
+                  ...p,
+                  x: spawnX,
+                  y: spawnY,
+                }));
+              }, 0);
+              setTransitionPhase("in");
+              setTransitionTarget(null);
+            };
           if (nextConfig.bgMusic !== currentBgm) {
             audioService.fadeOutBgmThenPlay(nextConfig.bgMusic).then(() => {
               lastBgmRef.current = nextConfig.bgMusic;
@@ -613,9 +616,12 @@ const GameView: React.FC = () => {
         },
         (objId: string, damage: number) => {
           // Handle enemy/NPC damage
-          setSceneConfig((prev) => ({
-            ...prev,
-            objects: prev.objects.map((obj) => {
+          // CRITICAL: We must update BOTH state and ref immediately.
+          // If we only update state, the next frame's loop (running on ref) might 
+          // overwrite this update with stale data before React commits.
+          
+          const applyDamage = (objects: GameObject[]) => {
+            return objects.map((obj) => {
               if (obj.id === objId && obj.health !== undefined) {
                 const newHealth = Math.max(0, obj.health - damage);
                 const diedNow = newHealth <= 0 && !obj.isDead;
@@ -630,11 +636,23 @@ const GameView: React.FC = () => {
                   ...obj, 
                   health: newHealth, 
                   isDead: newHealth <= 0,
-                  color: newHealth <= 0 ? (obj.type === "enemy" ? "#3a0000" : obj.color) : obj.color 
+                  color: newHealth <= 0 ? (obj.alignment === "enemy" || obj.isEnemy ? "#3a0000" : obj.color) : obj.color 
                 };
               }
               return obj;
-            })
+            });
+          };
+
+          // 1. Update Ref immediately so next frame sees it
+          sceneConfigRef.current = {
+            ...sceneConfigRef.current,
+            objects: applyDamage(sceneConfigRef.current.objects)
+          };
+
+          // 2. Update React state for rendering
+          setSceneConfig((prev) => ({
+            ...prev,
+            objects: applyDamage(prev.objects)
           }));
         }
       );
@@ -717,7 +735,7 @@ const GameView: React.FC = () => {
                 ...obj,
                 health: Math.max(0, newHealth),
                 isDead: newHealth <= 0,
-                color: newHealth <= 0 ? "#3a0000" : obj.color,
+                color: newHealth <= 0 ? (obj.alignment === "enemy" || obj.isEnemy ? "#3a0000" : obj.color) : obj.color,
               };
             }
             return obj;

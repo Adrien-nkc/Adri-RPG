@@ -91,14 +91,17 @@ function formatObject(obj, sceneKey) {
   if (obj.zIndex != null && obj.zIndex !== 0)
     parts.push(`zIndex: ${Number(obj.zIndex)}`);
   
-  // Enemy-specific AI configuration
-  if (obj.type === "enemy") {
-    parts.push(`isEnemy: true`);
+  // Enemy/NPC AI configuration
+  if (obj.type === "enemy" || obj.type === "npc") {
+    if (obj.type === "enemy") parts.push(`isEnemy: true`);
     if (obj.health != null) parts.push(`health: ${Number(obj.health)}`);
     if (obj.maxHealth != null) parts.push(`maxHealth: ${Number(obj.maxHealth)}`);
     if (obj.aiType != null) parts.push(`aiType: ${escapeStr(obj.aiType)}`);
+    // Restore alignment if present (important for NPCs)
+    if (obj.alignment != null) parts.push(`alignment: ${escapeStr(obj.alignment)}`);
     if (obj.speed != null) parts.push(`speed: ${Number(obj.speed)}`);
     if (obj.detectionRange != null) parts.push(`detectionRange: ${Number(obj.detectionRange)}`);
+    if (obj.followRange != null) parts.push(`followRange: ${Number(obj.followRange)}`);
     if (obj.attackRange != null) parts.push(`attackRange: ${Number(obj.attackRange)}`);
     if (obj.attackDamage != null) parts.push(`attackDamage: ${Number(obj.attackDamage)}`);
     // Patrol points for patrol AI

@@ -1054,8 +1054,13 @@ export default function AdminPanel() {
                         patch.alignment = "player";
                         patch.isEnemy = false;
                         patch.collidable = true;
-                        patch.health = 100;
-                        patch.maxHealth = 100;
+                        patch.health = selectedObject.health ?? 100;
+                        patch.maxHealth = selectedObject.maxHealth ?? 100;
+                        patch.aiType = selectedObject.aiType ?? "chase";
+                        patch.speed = selectedObject.speed ?? 2;
+                        patch.detectionRange = selectedObject.detectionRange ?? 250;
+                        patch.attackRange = selectedObject.attackRange ?? 150;
+                        patch.attackDamage = selectedObject.attackDamage ?? 10;
                       } else {
                         // When changing FROM enemy/npc to something else
                         if (selectedObject.isEnemy) {
@@ -1214,7 +1219,7 @@ export default function AdminPanel() {
                           })
                         }
                       />
-                      <label className="admin-form-label">Detection Range</label>
+                      <label className="admin-form-label">Detection Range (Combat)</label>
                       <input
                         type="number"
                         className="admin-input"
@@ -1224,6 +1229,18 @@ export default function AdminPanel() {
                             detectionRange: Number(e.target.value),
                           })
                         }
+                      />
+                      <label className="admin-form-label">Follow Range (Friendly)</label>
+                      <input
+                        type="number"
+                        className="admin-input"
+                        value={selectedObject.followRange ?? 1000}
+                        onChange={(e) =>
+                          updateObject(selectedObject.id, {
+                            followRange: Number(e.target.value),
+                          })
+                        }
+                        title="Distance to detect player for following (when no enemies)"
                       />
                       <label className="admin-form-label">Attack Range</label>
                       <input

@@ -89,30 +89,6 @@ export const TestdeleteafterRoom: RoomConfig = {
       collidable: true
     },
     {
-      id: "enemy_test",
-      x: 600,
-      y: 100,
-      width: 30,
-      height: 50,
-      color: "#ff0000",
-      type: "enemy",
-      name: "Guard",
-      collidable: true,
-      isEnemy: true,
-      health: 100,
-      maxHealth: 100,
-      aiType: "patrol",
-      speed: 2,
-      detectionRange: 250,
-      attackRange: 40,
-      patrolPoints: [
-        { x: 600, y: 100 },
-        { x: 600, y: 300 },
-        { x: 400, y: 300 },
-        { x: 400, y: 100 },
-      ]
-    },
-    {
       id: "pistol_pickup",
       x: 150,
       y: 500,
@@ -175,30 +151,6 @@ export const TestdeleteafterRoom: RoomConfig = {
       triggerScene: GameScene.DAMIAN_HOUSE
     },
     {
-      id: "obj_1770711438964",
-      x: 816,
-      y: 542,
-      width: 30,
-      height: 50,
-      color: "#ff0000",
-      type: "enemy",
-      name: "Guard",
-      collidable: true,
-      isEnemy: true,
-      health: 100,
-      maxHealth: 100,
-      aiType: "patrol",
-      speed: 2,
-      detectionRange: 250,
-      attackRange: 40,
-      patrolPoints: [
-        { x: 178, y: 322 },
-        { x: 178, y: 522 },
-        { x: -22, y: 522 },
-        { x: -22, y: 322 },
-      ]
-    },
-    {
       id: "obj_1770716401763",
       x: 100,
       y: 100,
@@ -232,7 +184,16 @@ export const TestdeleteafterRoom: RoomConfig = {
       color: "#636e72",
       type: "npc",
       name: "NPC",
-      collidable: true
+      collidable: true,
+      health: 100,
+      maxHealth: 100,
+      aiType: "chase",
+      alignment: "player",
+      speed: 2,
+      detectionRange: 250,
+      followRange: 1000,
+      attackRange: 150,
+      attackDamage: 25
     },
   ],
 };

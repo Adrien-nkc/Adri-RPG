@@ -353,7 +353,7 @@ export function useGunSystem() {
           } else {
             // Player/NPC projectiles hit enemies
             for (const obj of objects) {
-              if (obj.alignment === "enemy" && !obj.isDead) {
+              if ((obj.alignment === "enemy" || obj.isEnemy) && !obj.isDead) {
                 const dx = proj.x - (obj.x + obj.width / 2);
                 const dy = proj.y - (obj.y + obj.height / 2);
                 const dist = Math.hypot(dx, dy);
@@ -435,6 +435,7 @@ export function useGunSystem() {
     updateProjectiles,
     addEnemyProjectile,
     addShotLine, // Added to return
+    clearEffects: () => setState((prev) => ({ ...prev, effects: [], shotLines: [] })),
   }), [state, addGun, equipGun, reload, canShoot, shoot, spawnBloodSplatter, updateProjectiles, addEnemyProjectile, addShotLine]);
 }
 
@@ -447,7 +448,8 @@ function checkHitscanHit(
   // Simple raycast - check line intersection with object rectangles
   for (const obj of objects) {
     if (obj.isDead) continue;
-    if (!obj.isEnemy && !obj.health) continue; // Only hit enemies or destructible objects
+    // Hit enemies, alignment-based combatants, or destructible objects
+    if (!obj.isEnemy && obj.alignment !== "enemy" && !obj.health) continue;
 
     const hit = lineRectIntersection(from, to, obj);
     if (hit) {

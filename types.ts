@@ -96,6 +96,7 @@ export interface GameObject {
   aiType?: "stationary" | "patrol" | "chase" | "follow";
   patrolPoints?: Vector2[];
   detectionRange?: number;
+  followRange?: number;
   attackRange?: number;
   attackDamage?: number;
   // Death behavior
